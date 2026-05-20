@@ -66,7 +66,6 @@ footer a { color: var(--info-text); text-decoration: none; }
 .error-box { background: var(--warning-bg); color: var(--warning-text); border-radius: var(--radius-md); padding: 16px 18px; margin: 1rem 0; }
 .error-box strong { display: block; margin-bottom: 6px; font-size: 14px; }
 
-/* Modal Styles - NEW */
 .modal-overlay {
   position: fixed; top: 0; left: 0; right: 0; bottom: 0;
   background: var(--modal-bg);
@@ -152,7 +151,6 @@ footer a { color: var(--info-text); text-decoration: none; }
 .tx-amount.point { color: #b07000; }
 .modal-empty { padding: 40px 20px; text-align: center; color: var(--text-3); font-size: 13px; }
 
-/* Pointer cursor on charts to hint clickability */
 canvas { cursor: pointer; }
 </style>
 </head>
@@ -224,7 +222,6 @@ canvas { cursor: pointer; }
 
 </div>
 
-<!-- Modal Popup -->
 <div class="modal-overlay" id="modalOverlay">
 <div class="modal" id="modalBox">
 <div class="modal-header">
@@ -243,9 +240,6 @@ canvas { cursor: pointer; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
 <script>
-// ============================================================
-// CONFIG: 구글시트 웹 게시 URL
-// ============================================================
 const SHEET_ID = '1XjFxNEDBO048QnY24RtztwxOFO0MzZ_ND3-AED7fJjY';
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTSUbpeE9-Y1Wsbitg64trWFih6fvJrv9VC39e9qP9HCwDEwLh1Kr3An5-L2iOcbzfJGS1kgm0Eqaqs/pub?output=csv';
 
@@ -253,14 +247,13 @@ const COLORS = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de', '#3ba272'
 const fmt = n => Number(n).toLocaleString('ko-KR');
 const fmtAmount = n => fmt(n) + '원';
 
+const isPureExpense = r => r.kind === 'expense' && !r.is_point;
+
 let allData = [];
 let currentMonth = null;
 let monthData = [];
 let charts = {};
 
-// ============================================================
-// DATA LOAD
-// ============================================================
 async function loadData() {
   try {
     const r = await fetch(CSV_URL + '&_=' + Date.now());
@@ -282,9 +275,7 @@ async function loadData() {
         is_point: (row.is_point || '').toLowerCase() === 'yes'
       }))
       .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
-    
     if (allData.length === 0) throw new Error('데이터가 비어있습니다');
-    
     document.getElementById('loading').style.display = 'none';
     document.getElementById('mainView').style.display = 'block';
     initTabs();
@@ -295,16 +286,10 @@ async function loadData() {
   }
 }
 
-// ============================================================
-// TABS
-// ============================================================
 function initTabs() {
   const months = [...new Set(allData.map(r => r.month))].sort();
   if (months.length === 0) return;
-  
-  // 현재 월을 찾되, 데이터가 있으면 가장 최근 월 우선
   currentMonth = months[months.length - 1];
-  
   const container = document.getElementById('tabsContainer');
   container.innerHTML = '';
   months.forEach(m => {
@@ -314,7 +299,6 @@ function initTabs() {
     btn.onclick = () => switchMonth(m);
     container.appendChild(btn);
   });
-  
   renderMonth();
 }
 
@@ -327,12 +311,8 @@ function switchMonth(m) {
   renderMonth();
 }
 
-// ============================================================
-// RENDER
-// ============================================================
 function renderMonth() {
   monthData = allData.filter(r => r.month === currentMonth);
-  
   if (monthData.length === 0) {
     document.getElementById('dataView').style.display = 'none';
     document.getElementById('emptyView').style.display = 'block';
@@ -340,7 +320,6 @@ function renderMonth() {
   }
   document.getElementById('dataView').style.display = 'block';
   document.getElementById('emptyView').style.display = 'none';
-  
   renderKPI();
   renderMethodChart();
   renderCategoryChart();
@@ -349,12 +328,11 @@ function renderMonth() {
 }
 
 function renderKPI() {
-  const expense = monthData.filter(r => r.kind === 'expense' && !r.is_point).reduce((s, r) => s + r.amount, 0);
+  const expense = monthData.filter(isPureExpense).reduce((s, r) => s + r.amount, 0);
   const income = monthData.filter(r => r.kind === 'income').reduce((s, r) => s + r.amount, 0);
   const cardExpense = monthData.filter(r => r.kind === 'expense' && r.group === 'card').reduce((s, r) => s + r.amount, 0);
   const cashOut = monthData.filter(r => r.kind === 'expense' && r.group === 'cash_out').reduce((s, r) => s + r.amount, 0);
   const point = monthData.filter(r => r.is_point).reduce((s, r) => s + r.amount, 0);
-  
   const grid = document.getElementById('kpiGrid');
   grid.innerHTML = `
     <div class="kpi" data-filter="all-expense"><div class="label">총 지출</div><div class="value expense">${fmtAmount(expense)}</div></div>
@@ -362,21 +340,17 @@ function renderKPI() {
     <div class="kpi" data-filter="card"><div class="label">카드 사용</div><div class="value">${fmtAmount(cardExpense)}</div></div>
     <div class="kpi" data-filter="cash_out"><div class="label">계좌 출금</div><div class="value">${fmtAmount(cashOut)}</div></div>
   `;
-  
-  // KPI 클릭 → 상세 팝업
   grid.querySelectorAll('.kpi').forEach(el => {
     el.onclick = () => {
       const f = el.dataset.filter;
       let txs, title;
-      if (f === 'all-expense') { txs = monthData.filter(r => r.kind === 'expense' && !r.is_point); title = '총 지출 내역'; }
+      if (f === 'all-expense') { txs = monthData.filter(isPureExpense); title = '총 지출 내역'; }
       else if (f === 'all-income') { txs = monthData.filter(r => r.kind === 'income'); title = '총 수입 내역'; }
       else if (f === 'card') { txs = monthData.filter(r => r.kind === 'expense' && r.group === 'card'); title = '카드 사용 내역'; }
       else if (f === 'cash_out') { txs = monthData.filter(r => r.kind === 'expense' && r.group === 'cash_out'); title = '계좌 출금 내역'; }
       openModal(title, currentMonth + '월', txs);
     };
   });
-  
-  // 포인트 결제 배너
   const banner = document.getElementById('pointBanner');
   if (point > 0) {
     banner.innerHTML = `💡 별도 안내: 이번달 포인트 결제 ${fmtAmount(point)} (지출 합계엔 미포함). <a href="#" id="pointLink" style="color:inherit;text-decoration:underline;">상세 보기</a>`;
@@ -390,9 +364,6 @@ function renderKPI() {
   }
 }
 
-// ============================================================
-// CHARTS
-// ============================================================
 function buildLegend(elId, labels) {
   const el = document.getElementById(elId);
   if (!el) return;
@@ -406,36 +377,23 @@ function destroyChart(key) {
 function renderMethodChart() {
   destroyChart('method');
   const map = {};
-  monthData.filter(r => r.kind === 'expense' && !r.is_point).forEach(r => {
-    map[r.method] = (map[r.method] || 0) + r.amount;
-  });
+  monthData.filter(isPureExpense).forEach(r => { map[r.method] = (map[r.method] || 0) + r.amount; });
   const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
   const labels = entries.map(e => e[0]);
   const values = entries.map(e => e[1]);
-  
   buildLegend('methodLegend', labels);
-  
   const ctx = document.getElementById('methodChart');
   charts.method = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{ data: values, backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 4 }]
-    },
+    data: { labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 4 }] },
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: c => fmtAmount(c.parsed.x) + ' (클릭하여 상세보기)' } }
-      },
-      scales: {
-        x: { ticks: { callback: v => fmt(v) } },
-        y: { ticks: { font: { size: 11 } } }
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmtAmount(c.parsed.x) + ' (클릭하여 상세보기)' } } },
+      scales: { x: { ticks: { callback: v => fmt(v) } }, y: { ticks: { font: { size: 11 } } } },
       onClick: (e, els) => {
         if (els.length === 0) return;
         const method = labels[els[0].index];
-        openModal(method, currentMonth + '월 사용 내역', monthData.filter(r => r.method === method && !r.is_point));
+        openModal(method, currentMonth + '월 사용 내역', monthData.filter(r => r.method === method && isPureExpense(r)));
       }
     }
   });
@@ -444,41 +402,26 @@ function renderMethodChart() {
 function renderCategoryChart() {
   destroyChart('category');
   const map = {};
-  monthData.filter(r => r.kind === 'expense' && !r.is_point).forEach(r => {
-    map[r.category] = (map[r.category] || 0) + r.amount;
-  });
+  monthData.filter(isPureExpense).forEach(r => { map[r.category] = (map[r.category] || 0) + r.amount; });
   const entries = Object.entries(map).sort((a, b) => b[1] - a[1]);
   const labels = entries.map(e => e[0]);
   const values = entries.map(e => e[1]);
   const total = values.reduce((s, v) => s + v, 0);
-  
   buildLegend('catLegend', labels);
-  
-  // 카테고리 수에 따라 차트 높이 조정
   const wrap = document.getElementById('categoryChart').parentElement;
   wrap.style.height = Math.max(200, 30 * labels.length + 60) + 'px';
-  
   const ctx = document.getElementById('categoryChart');
   charts.category = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{ data: values, backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 4 }]
-    },
+    data: { labels, datasets: [{ data: values, backgroundColor: labels.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 4 }] },
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: c => `${fmtAmount(c.parsed.x)} (${(c.parsed.x/total*100).toFixed(1)}%)` } }
-      },
-      scales: {
-        x: { ticks: { callback: v => fmt(v) } },
-        y: { ticks: { font: { size: 11 } } }
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => `${fmtAmount(c.parsed.x)} (${(c.parsed.x/total*100).toFixed(1)}%)` } } },
+      scales: { x: { ticks: { callback: v => fmt(v) } }, y: { ticks: { font: { size: 11 } } } },
       onClick: (e, els) => {
         if (els.length === 0) return;
         const cat = labels[els[0].index];
-        openModal(cat, currentMonth + '월 카테고리 내역', monthData.filter(r => r.category === cat && !r.is_point));
+        openModal(cat, currentMonth + '월 카테고리 내역', monthData.filter(r => r.category === cat && isPureExpense(r)));
       }
     }
   });
@@ -487,33 +430,18 @@ function renderCategoryChart() {
 function renderDailyChart() {
   destroyChart('daily');
   const map = {};
-  monthData.filter(r => r.kind === 'expense' && !r.is_point).forEach(r => {
-    map[r.date] = (map[r.date] || 0) + r.amount;
-  });
+  monthData.filter(isPureExpense).forEach(r => { map[r.date] = (map[r.date] || 0) + r.amount; });
   const dates = Object.keys(map).sort();
   const values = dates.map(d => map[d]);
-  const labels = dates.map(d => d.slice(5)); // MM-DD
-  
+  const labels = dates.map(d => d.slice(5));
   const ctx = document.getElementById('dailyChart');
   charts.daily = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{ data: values, backgroundColor: '#5470c6', borderRadius: 4 }]
-    },
+    data: { labels, datasets: [{ data: values, backgroundColor: '#5470c6', borderRadius: 4 }] },
     options: {
       responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { 
-          title: c => dates[c[0].dataIndex] + ' (클릭)',
-          label: c => fmtAmount(c.parsed.y) 
-        } }
-      },
-      scales: {
-        y: { ticks: { callback: v => fmt(v) } },
-        x: { ticks: { font: { size: 11 } } }
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { title: c => dates[c[0].dataIndex] + ' (클릭)', label: c => fmtAmount(c.parsed.y) } } },
+      scales: { y: { ticks: { callback: v => fmt(v) } }, x: { ticks: { font: { size: 11 } } } },
       onClick: (e, els) => {
         if (els.length === 0) return;
         const date = dates[els[0].index];
@@ -526,46 +454,29 @@ function renderDailyChart() {
 function renderMerchantChart() {
   destroyChart('merchant');
   const map = {};
-  monthData.filter(r => r.kind === 'expense' && !r.is_point).forEach(r => {
-    map[r.merchant] = (map[r.merchant] || 0) + r.amount;
-  });
+  monthData.filter(isPureExpense).forEach(r => { map[r.merchant] = (map[r.merchant] || 0) + r.amount; });
   const entries = Object.entries(map).sort((a, b) => b[1] - a[1]).slice(0, 10);
   const labels = entries.map(e => e[0]);
   const values = entries.map(e => e[1]);
-  
-  // 가맹점 수에 따라 차트 높이 조정
   const wrap = document.getElementById('merchantChart').parentElement;
   wrap.style.height = Math.max(200, 32 * labels.length + 40) + 'px';
-  
   const ctx = document.getElementById('merchantChart');
   charts.merchant = new Chart(ctx, {
     type: 'bar',
-    data: {
-      labels,
-      datasets: [{ data: values, backgroundColor: '#73c0de', borderRadius: 4 }]
-    },
+    data: { labels, datasets: [{ data: values, backgroundColor: '#73c0de', borderRadius: 4 }] },
     options: {
       indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: c => fmtAmount(c.parsed.x) + ' (클릭)' } }
-      },
-      scales: {
-        x: { ticks: { callback: v => fmt(v) } },
-        y: { ticks: { font: { size: 11 } } }
-      },
+      plugins: { legend: { display: false }, tooltip: { callbacks: { label: c => fmtAmount(c.parsed.x) + ' (클릭)' } } },
+      scales: { x: { ticks: { callback: v => fmt(v) } }, y: { ticks: { font: { size: 11 } } } },
       onClick: (e, els) => {
         if (els.length === 0) return;
         const merch = labels[els[0].index];
-        openModal(merch, currentMonth + '월 가맹점 내역', monthData.filter(r => r.merchant === merch && !r.is_point));
+        openModal(merch, currentMonth + '월 가맹점 내역', monthData.filter(r => r.merchant === merch && isPureExpense(r)));
       }
     }
   });
 }
 
-// ============================================================
-// MODAL — 팝업으로 상세 거래 내역 표시
-// ============================================================
 function txIcon(kind, group, isPoint) {
   if (isPoint) return { cls: 'point', emoji: '🎁' };
   if (kind === 'income') return { cls: 'income', emoji: '↓' };
@@ -579,17 +490,12 @@ function openModal(title, ctx, transactions) {
   const sorted = [...transactions].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time));
   document.getElementById('modalTitle').firstChild.textContent = title;
   document.getElementById('modalCtx').textContent = ctx;
-  
-  // 합계
   const expense = sorted.filter(r => r.kind === 'expense').reduce((s, r) => s + r.amount, 0);
   const income = sorted.filter(r => r.kind === 'income').reduce((s, r) => s + r.amount, 0);
-  
   let summaryHTML = `<div><div class="label">건수</div><div class="val">${sorted.length}건</div></div>`;
   if (expense > 0) summaryHTML += `<div><div class="label">지출 합계</div><div class="val" style="color:#c0392b">${fmtAmount(expense)}</div></div>`;
   if (income > 0) summaryHTML += `<div><div class="label">수입 합계</div><div class="val" style="color:var(--success)">${fmtAmount(income)}</div></div>`;
   document.getElementById('modalSummary').innerHTML = summaryHTML;
-  
-  // 거래 목록
   const body = document.getElementById('modalBody');
   if (sorted.length === 0) {
     body.innerHTML = '<div class="modal-empty">조건에 맞는 거래가 없습니다.</div>';
@@ -613,7 +519,6 @@ function openModal(title, ctx, transactions) {
       `;
     }).join('');
   }
-  
   document.getElementById('modalOverlay').classList.add('show');
   document.body.style.overflow = 'hidden';
 }
@@ -623,16 +528,9 @@ function closeModal() {
   document.body.style.overflow = '';
 }
 
-// 모달 닫기 이벤트
 document.getElementById('modalCloseBtn').onclick = closeModal;
-document.getElementById('modalOverlay').onclick = (e) => {
-  if (e.target.id === 'modalOverlay') closeModal();
-};
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') closeModal();
-});
-
-// 새로고침
+document.getElementById('modalOverlay').onclick = (e) => { if (e.target.id === 'modalOverlay') closeModal(); };
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
 document.getElementById('refreshBtn').onclick = () => {
   document.getElementById('mainView').style.display = 'none';
   document.getElementById('errorView').style.display = 'none';
@@ -640,7 +538,6 @@ document.getElementById('refreshBtn').onclick = () => {
   loadData();
 };
 
-// 초기 로드
 loadData();
 </script>
 
